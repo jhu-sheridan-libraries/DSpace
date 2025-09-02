@@ -14,6 +14,8 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -23,21 +25,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
 
-import com.amazonaws.AmazonClientException;
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.regions.Region;
-import com.amazonaws.regions.Regions;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
-import com.amazonaws.services.s3.model.GetObjectRequest;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.transfer.Download;
-import com.amazonaws.services.s3.transfer.TransferManager;
-import com.amazonaws.services.s3.transfer.TransferManagerBuilder;
-import com.amazonaws.services.s3.transfer.Upload;
 import jakarta.validation.constraints.NotNull;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.DefaultParser;
@@ -47,7 +34,6 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.io.output.NullOutputStream;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.dspace.content.Bitstream;
@@ -58,6 +44,20 @@ import org.dspace.storage.bitstore.factory.StorageServiceFactory;
 import org.dspace.storage.bitstore.service.BitstreamStorageService;
 import org.dspace.util.FunctionalUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.awscore.defaultsmode.DefaultsMode;
+import software.amazon.awssdk.awscore.exception.AwsServiceException;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.http.HttpStatusCode;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.ChecksumAlgorithm;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 
 /**
  * Asset store using Amazon's Simple Storage Service (S3).
@@ -121,13 +121,7 @@ public class S3BitStoreService extends BaseBitStoreService {
     /**
      * S3 service
      */
-    private AmazonS3 s3Service = null;
-
-    /**
-     * S3 transfer manager
-     * this is reused between put calls to use less resources for multiple uploads
-     */
-    private TransferManager tm = null;
+    private S3Client s3Client = null;
 
     private static final ConfigurationService configurationService
             = DSpaceServicesFactory.getInstance().getConfigurationService();
@@ -139,14 +133,11 @@ public class S3BitStoreService extends BaseBitStoreService {
      * @param awsCredentials credentials of the client
      * @return builder with the specified parameters
      */
-    protected static Supplier<AmazonS3> amazonClientBuilderBy(
-            @NotNull Regions regions,
-            @NotNull AWSCredentials awsCredentials
+    protected static Supplier<S3Client> amazonClientBuilderBy(
+            @NotNull Region region,
+            @NotNull AwsCredentialsProvider credentialsProvider
     ) {
-        return () -> AmazonS3ClientBuilder.standard()
-                .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
-                .withRegion(regions)
-                .build();
+        return () -> S3Client.builder().region(region).credentialsProvider(credentialsProvider).build();
     }
 
     public S3BitStoreService() {}
@@ -156,8 +147,8 @@ public class S3BitStoreService extends BaseBitStoreService {
      *
      * @param s3Service AmazonS3 service
      */
-    protected S3BitStoreService(AmazonS3 s3Service) {
-        this.s3Service = s3Service;
+    protected S3BitStoreService(S3Client s3Client) {
+        this.s3Client = s3Client;
     }
 
     @Override
@@ -183,28 +174,29 @@ public class S3BitStoreService extends BaseBitStoreService {
             if (StringUtils.isNotBlank(getAwsAccessKey()) && StringUtils.isNotBlank(getAwsSecretKey())) {
                 log.warn("Use local defined S3 credentials");
                 // region
-                Regions regions = Regions.DEFAULT_REGION;
+                Region region = Region.US_EAST_1;
                 if (StringUtils.isNotBlank(awsRegionName)) {
                     try {
-                        regions = Regions.fromName(awsRegionName);
+                        region = Region.of(awsRegionName);
                     } catch (IllegalArgumentException e) {
                         log.warn("Invalid aws_region: " + awsRegionName);
                     }
                 }
+
                 // init client
-                s3Service = FunctionalUtils.getDefaultOrBuild(
-                        this.s3Service,
+                s3Client = FunctionalUtils.getDefaultOrBuild(
+                        this.s3Client,
                         amazonClientBuilderBy(
-                                regions,
-                                new BasicAWSCredentials(getAwsAccessKey(), getAwsSecretKey())
-                                )
+                                region,
+                                StaticCredentialsProvider.create(AwsBasicCredentials.create(getAwsAccessKey(),
+                                        getAwsSecretKey())))
                         );
-                log.warn("S3 Region set to: " + regions.getName());
+                log.warn("S3 Region set to: " + region.id());
             } else {
                 log.info("Using a IAM role or aws environment credentials");
-                s3Service = FunctionalUtils.getDefaultOrBuild(
-                        this.s3Service,
-                        AmazonS3ClientBuilder::defaultClient
+                s3Client = FunctionalUtils.getDefaultOrBuild(
+                        this.s3Client,
+                        () -> S3Client.builder().defaultsMode(DefaultsMode.STANDARD).build()
                         );
             }
 
@@ -217,11 +209,11 @@ public class S3BitStoreService extends BaseBitStoreService {
             }
 
             try {
-                if (!s3Service.doesBucketExistV2(bucketName)) {
-                    s3Service.createBucket(bucketName);
+                if (!doesBucketExist(bucketName)) {
+                    s3Client.createBucket(r -> r.bucket(bucketName));
                     log.info("Creating new S3 Bucket: " + bucketName);
                 }
-            } catch (AmazonClientException e) {
+            } catch (AwsServiceException e) {
                 throw new IOException(e);
             }
             this.initialized = true;
@@ -230,13 +222,22 @@ public class S3BitStoreService extends BaseBitStoreService {
             this.initialized = false;
             log.error("Can't initialize this store!", e);
         }
+    }
 
-        log.info("AWS S3 Assetstore ready to go! bucket:" + bucketName);
-
-        tm = FunctionalUtils.getDefaultOrBuild(tm, () -> TransferManagerBuilder.standard()
-                                                               .withAlwaysCalculateMultipartMd5(true)
-                                                               .withS3Client(s3Service)
-                                                               .build());
+    /**
+     * @param bucketName
+     * @return whether or not the specified bucket exists
+     */
+    public boolean doesBucketExist(String bucketName ) {
+        try {
+            s3Client.headBucket(r -> r.bucket(bucketName));
+            return true;
+        } catch (NoSuchBucketException e) {
+            return false;
+        } catch (AwsServiceException e) {
+            log.error("headBucket(" + bucketName + ")", e);
+            return false;
+        }
     }
 
     /**
@@ -264,6 +265,7 @@ public class S3BitStoreService extends BaseBitStoreService {
         if (isRegisteredBitstream(key)) {
             key = key.substring(REGISTERED_FLAG.length());
         }
+
         return new S3LazyInputStream(key, bufferSize, bitstream.getSizeBytes());
     }
 
@@ -291,17 +293,16 @@ public class S3BitStoreService extends BaseBitStoreService {
             Utils.bufferedCopy(dis, fos);
             in.close();
 
-            Upload upload = tm.upload(bucketName, key, scratchFile);
-
-            upload.waitForUploadResult();
+            RequestBody body = RequestBody.fromFile(scratchFile);
+            s3Client.putObject(b ->  b.bucket(bucketName).key(key).checksumAlgorithm(ChecksumAlgorithm.SHA256), body);
 
             bitstream.setSizeBytes(scratchFile.length());
+
             // we cannot use the S3 ETAG here as it could be not a MD5 in case of multipart upload (large files) or if
             // the bucket is encrypted
             bitstream.setChecksum(Utils.toHex(dis.getMessageDigest().digest()));
             bitstream.setChecksumAlgorithm(CSA);
-
-        } catch (AmazonClientException | IOException | InterruptedException e) {
+        } catch (AwsServiceException | IOException e) {
             log.error("put(" + bitstream.getInternalId() + ", is)", e);
             throw new IOException(e);
         } catch (NoSuchAlgorithmException nsae) {
@@ -329,7 +330,6 @@ public class S3BitStoreService extends BaseBitStoreService {
      */
     @Override
     public Map<String, Object> about(Bitstream bitstream, List<String> attrs) throws IOException {
-
         String key = getFullKey(bitstream.getInternalId());
         // If this is a registered bitstream, strip the -R prefix before retrieving
         if (isRegisteredBitstream(key)) {
@@ -339,20 +339,18 @@ public class S3BitStoreService extends BaseBitStoreService {
         Map<String, Object> metadata = new HashMap<>();
 
         try {
+            final String k = key;
+            HeadObjectResponse response = s3Client.headObject(r -> r.bucket(bucketName).key(k));
 
-            ObjectMetadata objectMetadata = s3Service.getObjectMetadata(bucketName, key);
-            if (objectMetadata != null) {
-                putValueIfExistsKey(attrs, metadata, "size_bytes", objectMetadata.getContentLength());
-                putValueIfExistsKey(attrs, metadata, "modified", valueOf(objectMetadata.getLastModified().getTime()));
-            }
-
+            putValueIfExistsKey(attrs, metadata, "size_bytes", response.contentLength());
+            putValueIfExistsKey(attrs, metadata, "modified", valueOf(response.lastModified()));
             putValueIfExistsKey(attrs, metadata, "checksum_algorithm", CSA);
 
             if (attrs.contains("checksum")) {
                 try (InputStream in = get(bitstream);
                      DigestInputStream dis = new DigestInputStream(in, MessageDigest.getInstance(CSA))
                 ) {
-                    Utils.copy(dis, NullOutputStream.NULL_OUTPUT_STREAM);
+                    Utils.copy(dis, NullOutputStream.INSTANCE);
                     byte[] md5Digest = dis.getMessageDigest().digest();
                     metadata.put("checksum", Utils.toHex(md5Digest));
                 } catch (NoSuchAlgorithmException nsae) {
@@ -362,15 +360,14 @@ public class S3BitStoreService extends BaseBitStoreService {
             }
 
             return metadata;
-        } catch (AmazonS3Exception e) {
-            if (e.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
+        } catch (AwsServiceException e) {
+            if (e.statusCode() == HttpStatusCode.NOT_FOUND) {
                 return metadata;
             }
-        } catch (AmazonClientException e) {
+
             log.error("about(" + key + ", attrs)", e);
             throw new IOException(e);
         }
-        return metadata;
     }
 
     /**
@@ -383,8 +380,8 @@ public class S3BitStoreService extends BaseBitStoreService {
     public void remove(Bitstream bitstream) throws IOException {
         String key = getFullKey(bitstream.getInternalId());
         try {
-            s3Service.deleteObject(bucketName, key);
-        } catch (AmazonClientException e) {
+            s3Client.deleteObject(r -> r.bucket(bucketName).key(key));
+        } catch (AwsServiceException e) {
             log.error("remove(" + key + ")", e);
             throw new IOException(e);
         }
@@ -537,21 +534,18 @@ public class S3BitStoreService extends BaseBitStoreService {
 
         S3BitStoreService store = new S3BitStoreService();
 
-        AWSCredentials awsCredentials = new BasicAWSCredentials(accessKey, secretKey);
+        StaticCredentialsProvider credentialsProvider = StaticCredentialsProvider.create(
+                AwsBasicCredentials.create(accessKey, secretKey));
 
-        store.s3Service = AmazonS3ClientBuilder.standard()
-            .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
-            .build();
-
-        //Todo configurable region
-        Region usEast1 = Region.getRegion(Regions.US_EAST_1);
-        store.s3Service.setRegion(usEast1);
+        // Todo configurable region
+        store.s3Client = S3Client.builder().credentialsProvider(credentialsProvider).region(Region.US_EAST_1).build();
 
         // get hostname of DSpace UI to use to name bucket
         String hostname = Utils.getHostName(configurationService.getProperty("dspace.ui.url"));
         //Bucketname should be lowercase
         store.bucketName = DEFAULT_BUCKET_PREFIX + hostname + ".s3test";
-        store.s3Service.createBucket(store.bucketName);
+        store.s3Client.createBucket(r -> r.bucket(store.bucketName));
+
         /* Broken in DSpace 6 TODO Refactor
         // time everything, todo, switch to caliper
         long start = Instant.now().toEpochMilli();
@@ -671,17 +665,19 @@ public class S3BitStoreService extends BaseBitStoreService {
             // Create a DownloadFileRequest with the desired byte range
             long startByte = currPos; // Start byte (inclusive)
             long endByte = Long.min(startByte + chunkMaxSize - 1, fileSize - 1); // End byte (inclusive)
-            GetObjectRequest getRequest = new GetObjectRequest(bucketName, objectKey)
-                    .withRange(startByte, endByte);
 
             File currentChunkFile = File.createTempFile("s3-disk-copy-" + UUID.randomUUID(), "temp");
             currentChunkFile.deleteOnExit();
+
             try {
-                Download download = tm.download(getRequest, currentChunkFile);
-                download.waitForCompletion();
-                currentChunkStream = new DeleteOnCloseFileInputStream(currentChunkFile);
-                endOfChunk = endOfChunk + download.getProgress().getBytesTransferred();
-            } catch (AmazonClientException | InterruptedException e) {
+                try (ResponseInputStream<GetObjectResponse> response = s3Client.getObject(r ->
+                    r.bucket(bucketName).key(objectKey).range("bytes=" + startByte + "-" + endByte))) {
+                    Files.copy(response, currentChunkFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+                    currentChunkStream = new DeleteOnCloseFileInputStream(currentChunkFile);
+                    endOfChunk = endOfChunk + response.response().contentLength();
+                }
+            } catch (AwsServiceException e) {
                 currentChunkFile.delete();
                 throw new IOException(e);
             }
