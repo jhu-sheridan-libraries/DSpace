@@ -343,7 +343,7 @@ public class S3BitStoreService extends BaseBitStoreService {
             HeadObjectResponse response = s3Client.headObject(r -> r.bucket(bucketName).key(k));
 
             putValueIfExistsKey(attrs, metadata, "size_bytes", response.contentLength());
-            putValueIfExistsKey(attrs, metadata, "modified", valueOf(response.lastModified()));
+            putValueIfExistsKey(attrs, metadata, "modified", valueOf(response.lastModified().toEpochMilli()));
             putValueIfExistsKey(attrs, metadata, "checksum_algorithm", CSA);
 
             if (attrs.contains("checksum")) {
