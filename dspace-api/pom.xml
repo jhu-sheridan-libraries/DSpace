@@ -744,6 +744,12 @@
             </exclusions>
         </dependency>
 
+        <dependency>
+            <groupId>software.amazon.awssdk.crt</groupId>
+            <artifactId>aws-crt</artifactId>
+            <version>0.38.12</version>
+        </dependency>
+
         <!-- TODO: This may need to be replaced with the "orcid-model" artifact once this ticket is resolved:
              https://github.com/ORCID/orcid-model/issues/50 -->
         <!-- Maintained at https://github.com/DSpace/orcid-model -->

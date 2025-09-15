@@ -58,8 +58,9 @@ import org.junit.Test;
 import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.Bucket;
+import software.amazon.awssdk.services.s3.model.ChecksumAlgorithm;
 import software.amazon.awssdk.services.s3.model.GetObjectAttributesResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.ObjectAttributes;
@@ -70,7 +71,7 @@ import software.amazon.awssdk.services.s3.model.ObjectAttributes;
 public class S3BitStoreServiceIT extends AbstractIntegrationTestWithDatabase {
     private static  S3MockContainer s3Mock = new S3MockContainer("4.8.0");
 
-    private static S3Client s3Client;
+    private static S3AsyncClient s3AsyncClient;
 
     private static final String DEFAULT_BUCKET_NAME = "dspace-asset-localhost";
 
@@ -84,7 +85,7 @@ public class S3BitStoreServiceIT extends AbstractIntegrationTestWithDatabase {
     public static void setupS3() {
         s3Mock.start();
 
-        s3Client = S3Client.builder()
+        s3AsyncClient = S3AsyncClient.builder()
                 .endpointOverride(URI.create("http://127.0.0.1:" + s3Mock.getHttpServerPort()))
                 .credentialsProvider(AnonymousCredentialsProvider.create())
                 .region(Region.US_EAST_1)
@@ -94,17 +95,17 @@ public class S3BitStoreServiceIT extends AbstractIntegrationTestWithDatabase {
     @AfterClass
     public static void cleanupS3() {
         s3Mock.close();
-        s3Client.close();
+        s3AsyncClient.close();
     }
 
     @Before
     public void setup() throws Exception {
         configurationService.setProperty("assetstore.s3.enabled", "true");
 
-        s3BitStoreService = new S3BitStoreService(s3Client);
+        s3BitStoreService = new S3BitStoreService(s3AsyncClient);
         s3BitStoreService.setEnabled(BooleanUtils.toBoolean(
                 configurationService.getProperty("assetstore.s3.enabled")));
-        s3BitStoreService.setBufferSize(22);
+        s3BitStoreService.setS3ChecksumAlgorithm(ChecksumAlgorithm.SHA256);
 
         context.turnOffAuthorisationSystem();
 
@@ -122,12 +123,12 @@ public class S3BitStoreServiceIT extends AbstractIntegrationTestWithDatabase {
 
         String bucketName = "testbucket";
 
-        s3Client.createBucket(r -> r.bucket(bucketName));
+        s3AsyncClient.createBucket(r -> r.bucket(bucketName)).join();
 
         s3BitStoreService.setBucketName(bucketName);
         s3BitStoreService.init();
 
-        assertThat(s3Client.listBuckets().buckets(), hasItem(bucketNamed(bucketName)));
+        assertThat(s3AsyncClient.listBuckets().join().buckets(), hasItem(bucketNamed(bucketName)));
 
         context.turnOffAuthorisationSystem();
         String content                = "Test bitstream content";
@@ -160,9 +161,8 @@ public class S3BitStoreServiceIT extends AbstractIntegrationTestWithDatabase {
 
         String key = s3BitStoreService.getFullKey(bitstream.getInternalId());
 
-        GetObjectAttributesResponse response = s3Client.getObjectAttributes(r -> r.bucket(bucketName).key(key)
-                .objectAttributes(ObjectAttributes.CHECKSUM));
-
+        GetObjectAttributesResponse response = s3AsyncClient.getObjectAttributes(r -> r.bucket(bucketName).key(key)
+                .objectAttributes(ObjectAttributes.CHECKSUM)).join();
         expectedChecksum = Base64.getEncoder().encodeToString(generateChecksum("SHA-256", content));
         assertThat(response.checksum().checksumSHA256(), is(expectedChecksum));
     }
@@ -174,7 +174,11 @@ public class S3BitStoreServiceIT extends AbstractIntegrationTestWithDatabase {
 
         assertThat(s3BitStoreService.getBucketName(), is(DEFAULT_BUCKET_NAME));
 
-        assertThat(s3Client.listBuckets().buckets(), hasItem(bucketNamed(DEFAULT_BUCKET_NAME)));
+        System.err.println("HI");
+        System.err.println(s3AsyncClient.listBuckets().join().buckets().size());
+        System.err.println(s3AsyncClient.listBuckets().join().buckets());
+
+        assertThat(s3AsyncClient.listBuckets().join().buckets(), hasItem(bucketNamed(DEFAULT_BUCKET_NAME)));
 
         context.turnOffAuthorisationSystem();
         String content = "Test bitstream content";
@@ -193,8 +197,8 @@ public class S3BitStoreServiceIT extends AbstractIntegrationTestWithDatabase {
         assertThat(IOUtils.toString(inputStream, UTF_8), is(content));
 
         String key = s3BitStoreService.getFullKey(bitstream.getInternalId());
-        GetObjectAttributesResponse response = s3Client.getObjectAttributes(r -> r.bucket(DEFAULT_BUCKET_NAME).key(key)
-                .objectAttributes(ObjectAttributes.CHECKSUM));
+        GetObjectAttributesResponse response = s3AsyncClient.getObjectAttributes(r ->
+            r.bucket(DEFAULT_BUCKET_NAME).key(key).objectAttributes(ObjectAttributes.CHECKSUM)).join();
 
         expectedChecksum = Base64.getEncoder().encodeToString(generateChecksum("SHA-256", content));
         assertThat(response.checksum().checksumSHA256(), is(expectedChecksum));
@@ -219,8 +223,8 @@ public class S3BitStoreServiceIT extends AbstractIntegrationTestWithDatabase {
         String key = s3BitStoreService.getFullKey(bitstream.getInternalId());
         assertThat(key, startsWith("test/DSpace7/"));
 
-        HeadObjectResponse response = s3Client.headObject(r ->
-            r.bucket(DEFAULT_BUCKET_NAME).key(key));
+        HeadObjectResponse response = s3AsyncClient.headObject(r ->
+            r.bucket(DEFAULT_BUCKET_NAME).key(key)).join();
         assertThat(response, notNullValue());
     }
 
@@ -415,7 +419,7 @@ public class S3BitStoreServiceIT extends AbstractIntegrationTestWithDatabase {
     public void testDoNotInitializeConfigured() throws Exception {
         String assetstores3enabledOldValue = configurationService.getProperty("assetstore.s3.enabled");
         configurationService.setProperty("assetstore.s3.enabled", "false");
-        s3BitStoreService = new S3BitStoreService(s3Client);
+        s3BitStoreService = new S3BitStoreService(s3AsyncClient);
         s3BitStoreService.init();
         assertFalse(s3BitStoreService.isInitialized());
         assertFalse(s3BitStoreService.isEnabled());
