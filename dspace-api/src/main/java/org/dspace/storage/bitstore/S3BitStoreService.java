@@ -146,10 +146,6 @@ public class S3BitStoreService extends BaseBitStoreService {
                 crtBuilder.region(region);
             }
 
-            if (credentialsProvider != null) {
-                crtBuilder.credentialsProvider(credentialsProvider);
-            }
-
             if (maxConcurrency != null) {
                 crtBuilder.maxConcurrency(maxConcurrency);
             }
