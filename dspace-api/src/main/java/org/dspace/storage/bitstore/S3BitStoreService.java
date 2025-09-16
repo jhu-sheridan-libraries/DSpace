@@ -101,6 +101,7 @@ public class S3BitStoreService extends BaseBitStoreService {
     private double targetThroughputGbps = 10.0;
     private long minPartSizeBytes = 8 * 1024 * 1024L;
     private ChecksumAlgorithm s3ChecksumAlgorithm = ChecksumAlgorithm.CRC32;
+    private Integer maxConcurrency = null;
 
     /**
      * container for all the assets
@@ -131,10 +132,15 @@ public class S3BitStoreService extends BaseBitStoreService {
             @NotNull Region region,
             @NotNull AwsCredentialsProvider credentialsProvider,
             double targetThroughput,
-            long minPartSize
+            long minPartSize,
+            Integer maxConcurrency
     ) {
         return () -> {
             S3CrtAsyncClientBuilder crtBuilder = S3AsyncClient.crtBuilder();
+
+            if (credentialsProvider != null) {
+                crtBuilder.credentialsProvider(credentialsProvider);
+            }
 
             if (region != null) {
                 crtBuilder.region(region);
@@ -142,6 +148,10 @@ public class S3BitStoreService extends BaseBitStoreService {
 
             if (credentialsProvider != null) {
                 crtBuilder.credentialsProvider(credentialsProvider);
+            }
+
+            if (maxConcurrency != null) {
+                crtBuilder.maxConcurrency(maxConcurrency);
             }
 
             return crtBuilder.targetThroughputInGbps(targetThroughput).minimumPartSizeInBytes(minPartSize)
@@ -197,14 +207,14 @@ public class S3BitStoreService extends BaseBitStoreService {
                         amazonClientBuilderBy(
                                 region,
                                 StaticCredentialsProvider.create(AwsBasicCredentials.create(getAwsAccessKey(),
-                                        getAwsSecretKey())), targetThroughputGbps, minPartSizeBytes)
+                                        getAwsSecretKey())), targetThroughputGbps, minPartSizeBytes, maxConcurrency)
                         );
                 log.warn("S3 Region set to: " + region.id());
             } else {
                 log.info("Using a IAM role or aws environment credentials");
                 s3AsyncClient = FunctionalUtils.getDefaultOrBuild(
                         this.s3AsyncClient,
-                        amazonClientBuilderBy(null, null , targetThroughputGbps, minPartSizeBytes));
+                        amazonClientBuilderBy(null, null , targetThroughputGbps, minPartSizeBytes, maxConcurrency));
             }
 
             // bucket name
@@ -533,6 +543,14 @@ public class S3BitStoreService extends BaseBitStoreService {
 
     public void setS3ChecksumAlgorithm(ChecksumAlgorithm s3ChecksumAlgorithm) {
         this.s3ChecksumAlgorithm = s3ChecksumAlgorithm;
+    }
+
+    public Integer getMaxConcurrency() {
+        return maxConcurrency;
+    }
+
+    public void setMaxConcurrency(Integer maxConcurrency) {
+        this.maxConcurrency = maxConcurrency;
     }
 
     /**
