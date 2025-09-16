@@ -85,7 +85,7 @@ public class S3BitStoreServiceIT extends AbstractIntegrationTestWithDatabase {
     public static void setupS3() {
         s3Mock.start();
 
-        s3AsyncClient = S3AsyncClient.builder()
+        s3AsyncClient = S3AsyncClient.crtBuilder()
                 .endpointOverride(URI.create("http://127.0.0.1:" + s3Mock.getHttpServerPort()))
                 .credentialsProvider(AnonymousCredentialsProvider.create())
                 .region(Region.US_EAST_1)
