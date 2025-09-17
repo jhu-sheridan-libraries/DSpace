@@ -150,8 +150,7 @@ public class S3BitStoreService extends BaseBitStoreService {
                 crtBuilder.maxConcurrency(maxConcurrency);
             }
 
-            return crtBuilder.targetThroughputInGbps(targetThroughput).minimumPartSizeInBytes(minPartSize)
-                     .credentialsProvider(credentialsProvider).build();
+            return crtBuilder.targetThroughputInGbps(targetThroughput).minimumPartSizeInBytes(minPartSize).build();
         };
     }
 
