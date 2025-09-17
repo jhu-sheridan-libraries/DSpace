@@ -126,11 +126,14 @@ public class S3BitStoreService extends BaseBitStoreService {
      *
      * @param regions wanted regions in client
      * @param awsCredentials credentials of the client
+     * @param targetThroughput target throughput in Gbps
+     * @param minPartSize minimum part size in bytes
+     * @param maxConcurrency maximum number of concurrent requests
      * @return builder with the specified parameters
      */
     protected static Supplier<S3AsyncClient> amazonClientBuilderBy(
-            @NotNull Region region,
-            @NotNull AwsCredentialsProvider credentialsProvider,
+            Region region,
+            AwsCredentialsProvider credentialsProvider,
             double targetThroughput,
             long minPartSize,
             Integer maxConcurrency
