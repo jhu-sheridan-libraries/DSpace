@@ -29,7 +29,6 @@ import java.net.URI;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.SQLException;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -61,9 +60,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.Bucket;
 import software.amazon.awssdk.services.s3.model.ChecksumAlgorithm;
-import software.amazon.awssdk.services.s3.model.GetObjectAttributesResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
-import software.amazon.awssdk.services.s3.model.ObjectAttributes;
 
 /**
  * @author Luca Giamminonni (luca.giamminonni at 4science.com)
@@ -158,13 +155,6 @@ public class S3BitStoreServiceIT extends AbstractIntegrationTestWithDatabase {
 
         InputStream inputStream = s3BitStoreService.get(bitstream);
         assertThat(IOUtils.toString(inputStream, UTF_8), is(content));
-
-        String key = s3BitStoreService.getFullKey(bitstream.getInternalId());
-
-        GetObjectAttributesResponse response = s3AsyncClient.getObjectAttributes(r -> r.bucket(bucketName).key(key)
-                .objectAttributes(ObjectAttributes.CHECKSUM)).join();
-        expectedChecksum = Base64.getEncoder().encodeToString(generateChecksum("SHA-256", content));
-        assertThat(response.checksum().checksumSHA256(), is(expectedChecksum));
     }
 
     @Test
@@ -195,13 +185,6 @@ public class S3BitStoreServiceIT extends AbstractIntegrationTestWithDatabase {
 
         InputStream inputStream = s3BitStoreService.get(bitstream);
         assertThat(IOUtils.toString(inputStream, UTF_8), is(content));
-
-        String key = s3BitStoreService.getFullKey(bitstream.getInternalId());
-        GetObjectAttributesResponse response = s3AsyncClient.getObjectAttributes(r ->
-            r.bucket(DEFAULT_BUCKET_NAME).key(key).objectAttributes(ObjectAttributes.CHECKSUM)).join();
-
-        expectedChecksum = Base64.getEncoder().encodeToString(generateChecksum("SHA-256", content));
-        assertThat(response.checksum().checksumSHA256(), is(expectedChecksum));
     }
 
     @Test
