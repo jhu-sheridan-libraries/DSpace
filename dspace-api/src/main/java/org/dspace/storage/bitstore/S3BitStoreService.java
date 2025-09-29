@@ -9,8 +9,6 @@ package org.dspace.storage.bitstore;
 
 import static java.lang.String.valueOf;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.DigestInputStream;
@@ -20,6 +18,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 
 import org.apache.commons.cli.CommandLine;
@@ -302,26 +302,21 @@ public class S3BitStoreService extends BaseBitStoreService {
     @Override
     public void put(Bitstream bitstream, InputStream in) throws IOException {
         String key = getFullKey(bitstream.getInternalId());
-        //Copy istream to temp file, and send the file, with some metadata
-        File scratchFile = File.createTempFile(bitstream.getInternalId(), "s3bs");
-        try (
-                FileOutputStream fos = new FileOutputStream(scratchFile);
-                // Read through a digest input stream that will work out the MD5
-                DigestInputStream dis = new DigestInputStream(in, MessageDigest.getInstance(CSA));
-        ) {
-            Utils.bufferedCopy(dis, fos);
-            in.close();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
 
-            AsyncRequestBody body = AsyncRequestBody.fromFile(scratchFile);
+        try (DigestInputStream dis = new DigestInputStream(in, MessageDigest.getInstance(CSA))) {
+            AsyncRequestBody body = AsyncRequestBody.fromInputStream(dis, null, executor);
+
             s3AsyncClient.putObject(b ->  b.bucket(bucketName).key(key).checksumAlgorithm(s3ChecksumAlgorithm),
                     body).join();
-            bitstream.setSizeBytes(scratchFile.length());
+
+            bitstream.setSizeBytes(s3AsyncClient.headObject(r -> r.bucket(bucketName).key(key))
+                    .join().contentLength());
 
             // we cannot use the S3 ETAG here as it could be not a MD5 in case of multipart upload (large files) or if
             // the bucket is encrypted
             bitstream.setChecksum(Utils.toHex(dis.getMessageDigest().digest()));
             bitstream.setChecksumAlgorithm(CSA);
-
         } catch (CompletionException e) {
             log.error("put(" + bitstream.getInternalId() + ", is)", e.getCause());
             throw new IOException(e.getCause());
@@ -332,9 +327,8 @@ public class S3BitStoreService extends BaseBitStoreService {
             // Should never happen
             log.warn("Caught NoSuchAlgorithmException", nsae);
         } finally {
-            if (!scratchFile.delete()) {
-                scratchFile.deleteOnExit();
-            }
+            executor.shutdown();
+            in.close();
         }
     }
 
