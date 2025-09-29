@@ -61,7 +61,7 @@ import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
  *
  * @author Richard Rodgers, Peter Dietz
  * @author Vincenzo Mecca (vins01-4science - vincenzo.mecca at 4science.com)
- *
+ * @author Mark Patton
  */
 
 public class S3BitStoreService extends BaseBitStoreService {
@@ -77,19 +77,6 @@ public class S3BitStoreService extends BaseBitStoreService {
      * Checksum algorithm
      */
     static final String CSA = "MD5";
-
-    // These settings control the way an identifier is hashed into
-    // directory and file names
-    //
-    // With digitsPerLevel 2 and directoryLevels 3, an identifier
-    // like 12345678901234567890 turns into the relative name
-    // /12/34/56/12345678901234567890.
-    //
-    // You should not change these settings if you have data in the
-    // asset store, as the BitstreamStorageManager will be unable
-    // to find your existing data.
-    protected static final int digitsPerLevel = 2;
-    protected static final int directoryLevels = 3;
 
     private boolean enabled = false;
 
@@ -335,8 +322,7 @@ public class S3BitStoreService extends BaseBitStoreService {
     /**
      * Obtain technical metadata about an asset in the asset store.
      *
-     * Checksum used is (ETag) hex encoded 128-bit MD5 digest of an object's content as calculated by Amazon S3
-     * (Does not use getContentMD5, as that is 128-bit MD5 digest calculated on caller's side)
+     * The MD5 checksum is calculated locally because it is not supported by AWS.
      *
      * @param bitstream The asset to describe
      * @param attrs     A List of desired metadata fields
@@ -596,59 +582,6 @@ public class S3BitStoreService extends BaseBitStoreService {
         //Bucketname should be lowercase
         store.bucketName = DEFAULT_BUCKET_PREFIX + hostname + ".s3test";
         store.s3AsyncClient.createBucket(r -> r.bucket(store.bucketName)).join();
-
-        /* Broken in DSpace 6 TODO Refactor
-        // time everything, todo, switch to caliper
-        long start = Instant.now().toEpochMilli();
-        // Case 1: store a file
-        String id = store.generateId();
-        System.out.print("put() file " + assetFile + " under ID " + id + ": ");
-        FileInputStream fis = new FileInputStream(assetFile);
-        //TODO create bitstream for assetfile...
-        Map attrs = store.put(fis, id);
-        long now =  Instant.now().toEpochMilli();
-        System.out.println((now - start) + " msecs");
-        start = now;
-        // examine the metadata returned
-        Iterator iter = attrs.keySet().iterator();
-        System.out.println("Metadata after put():");
-        while (iter.hasNext())
-        {
-            String key = (String)iter.next();
-            System.out.println( key + ": " + (String)attrs.get(key) );
-        }
-        // Case 2: get metadata and compare
-        System.out.print("about() file with ID " + id + ": ");
-        Map attrs2 = store.about(id, attrs);
-        now =  Instant.now().toEpochMilli();
-        System.out.println((now - start) + " msecs");
-        start = now;
-        iter = attrs2.keySet().iterator();
-        System.out.println("Metadata after about():");
-        while (iter.hasNext())
-        {
-            String key = (String)iter.next();
-            System.out.println( key + ": " + (String)attrs.get(key) );
-        }
-        // Case 3: retrieve asset and compare bits
-        System.out.print("get() file with ID " + id + ": ");
-        java.io.FileOutputStream fos = new java.io.FileOutputStream(assetFile+".echo");
-        InputStream in = store.get(id);
-        Utils.bufferedCopy(in, fos);
-        fos.close();
-        in.close();
-        now =  Instant.now().toEpochMilli();
-        System.out.println((now - start) + " msecs");
-        start = now;
-        // Case 4: remove asset
-        System.out.print("remove() file with ID: " + id + ": ");
-        store.remove(id);
-        now =  Instant.now().toEpochMilli();
-        System.out.println((now - start) + " msecs");
-        System.out.flush();
-        // should get nothing back now - will throw exception
-        store.get(id);
-*/
     }
 
     /**
