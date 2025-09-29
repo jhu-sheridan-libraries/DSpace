@@ -302,9 +302,9 @@ public class S3BitStoreService extends BaseBitStoreService {
     @Override
     public void put(Bitstream bitstream, InputStream in) throws IOException {
         String key = getFullKey(bitstream.getInternalId());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
 
         try (DigestInputStream dis = new DigestInputStream(in, MessageDigest.getInstance(CSA))) {
-            ExecutorService executor = Executors.newSingleThreadExecutor();
             AsyncRequestBody body = AsyncRequestBody.fromInputStream(dis, null, executor);
 
             s3AsyncClient.putObject(b ->  b.bucket(bucketName).key(key).checksumAlgorithm(s3ChecksumAlgorithm),
@@ -327,6 +327,7 @@ public class S3BitStoreService extends BaseBitStoreService {
             // Should never happen
             log.warn("Caught NoSuchAlgorithmException", nsae);
         } finally {
+            executor.shutdown();
             in.close();
         }
     }
