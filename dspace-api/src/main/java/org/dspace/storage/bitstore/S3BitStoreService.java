@@ -11,6 +11,7 @@ import static java.lang.String.valueOf;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -40,6 +41,10 @@ import org.dspace.storage.bitstore.factory.StorageServiceFactory;
 import org.dspace.storage.bitstore.service.BitstreamStorageService;
 import org.dspace.util.FunctionalUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+
+import jakarta.annotation.Nullable;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -95,6 +100,13 @@ public class S3BitStoreService extends BaseBitStoreService {
 
     private String awsAccessKey;
     private String awsSecretKey;
+
+    /**
+     * Custom S3 endpoint URI which will override the Amazon defaults
+     * if present.
+     */
+    private String endpoint = null;
+
     private String awsRegionName;
     private boolean useRelativePath;
     private double targetThroughputGbps = 10.0;
@@ -123,6 +135,7 @@ public class S3BitStoreService extends BaseBitStoreService {
     /**
      * Utility method for generate AmazonS3 builder
      *
+     * @param endpoint optional custom s3 endpoint
      * @param regions wanted regions in client
      * @param awsCredentials credentials of the client
      * @param targetThroughput target throughput in Gbps
@@ -131,8 +144,9 @@ public class S3BitStoreService extends BaseBitStoreService {
      * @return builder with the specified parameters
      */
     protected static Supplier<S3AsyncClient> amazonClientBuilderBy(
-            Region region,
-            AwsCredentialsProvider credentialsProvider,
+            @Nullable String endpoint,
+            @NotNull Region region,
+            @NotNull AwsCredentialsProvider credentialsProvider,
             double targetThroughput,
             long minPartSize,
             Integer maxConcurrency
@@ -150,6 +164,11 @@ public class S3BitStoreService extends BaseBitStoreService {
 
             if (maxConcurrency != null) {
                 crtBuilder.maxConcurrency(maxConcurrency);
+            }
+
+            if (StringUtils.isNotBlank(endpoint)) {
+                crtBuilder.endpointOverride(URI.create(endpoint));
+                crtBuilder.forcePathStyle(true);
             }
 
             return crtBuilder.targetThroughputInGbps(targetThroughput).minimumPartSizeInBytes(minPartSize).build();
@@ -181,9 +200,12 @@ public class S3BitStoreService extends BaseBitStoreService {
      */
     @Override
     public void init() throws IOException {
+
         if (this.isInitialized() || !this.isEnabled()) {
             return;
         }
+
+
 
         try {
             if (StringUtils.isNotBlank(getAwsAccessKey()) && StringUtils.isNotBlank(getAwsSecretKey())) {
@@ -202,6 +224,7 @@ public class S3BitStoreService extends BaseBitStoreService {
                 s3AsyncClient = FunctionalUtils.getDefaultOrBuild(
                         this.s3AsyncClient,
                         amazonClientBuilderBy(
+                                endpoint,
                                 region,
                                 StaticCredentialsProvider.create(AwsBasicCredentials.create(getAwsAccessKey(),
                                         getAwsSecretKey())), targetThroughputGbps, minPartSizeBytes, maxConcurrency)
@@ -211,7 +234,7 @@ public class S3BitStoreService extends BaseBitStoreService {
                 log.info("Using a IAM role or aws environment credentials");
                 s3AsyncClient = FunctionalUtils.getDefaultOrBuild(
                         this.s3AsyncClient,
-                        amazonClientBuilderBy(null, null , targetThroughputGbps, minPartSizeBytes, maxConcurrency));
+                        amazonClientBuilderBy(endpoint, null, null , targetThroughputGbps, minPartSizeBytes, maxConcurrency));
             }
 
             // bucket name
@@ -301,6 +324,9 @@ public class S3BitStoreService extends BaseBitStoreService {
      */
     @Override
     public void put(Bitstream bitstream, InputStream in) throws IOException {
+        log.error(getEndpoint());
+        log.error(getAwsAccessKey());
+        log.error(getAwsSecretKey());
         String key = getFullKey(bitstream.getInternalId());
 
         try (DigestInputStream dis = new DigestInputStream(in, MessageDigest.getInstance(CSA))) {
@@ -478,6 +504,15 @@ public class S3BitStoreService extends BaseBitStoreService {
         this.awsSecretKey = awsSecretKey;
     }
 
+    public String getEndpoint() {
+        return endpoint;
+    }
+
+    @Autowired
+    public void setEndpoint(String endpoint) {
+        this.endpoint = endpoint;
+    }
+
     public String getAwsRegionName() {
         return awsRegionName;
     }
@@ -596,58 +631,6 @@ public class S3BitStoreService extends BaseBitStoreService {
         store.bucketName = DEFAULT_BUCKET_PREFIX + hostname + ".s3test";
         store.s3AsyncClient.createBucket(r -> r.bucket(store.bucketName)).join();
 
-        /* Broken in DSpace 6 TODO Refactor
-        // time everything, todo, switch to caliper
-        long start = Instant.now().toEpochMilli();
-        // Case 1: store a file
-        String id = store.generateId();
-        System.out.print("put() file " + assetFile + " under ID " + id + ": ");
-        FileInputStream fis = new FileInputStream(assetFile);
-        //TODO create bitstream for assetfile...
-        Map attrs = store.put(fis, id);
-        long now =  Instant.now().toEpochMilli();
-        System.out.println((now - start) + " msecs");
-        start = now;
-        // examine the metadata returned
-        Iterator iter = attrs.keySet().iterator();
-        System.out.println("Metadata after put():");
-        while (iter.hasNext())
-        {
-            String key = (String)iter.next();
-            System.out.println( key + ": " + (String)attrs.get(key) );
-        }
-        // Case 2: get metadata and compare
-        System.out.print("about() file with ID " + id + ": ");
-        Map attrs2 = store.about(id, attrs);
-        now =  Instant.now().toEpochMilli();
-        System.out.println((now - start) + " msecs");
-        start = now;
-        iter = attrs2.keySet().iterator();
-        System.out.println("Metadata after about():");
-        while (iter.hasNext())
-        {
-            String key = (String)iter.next();
-            System.out.println( key + ": " + (String)attrs.get(key) );
-        }
-        // Case 3: retrieve asset and compare bits
-        System.out.print("get() file with ID " + id + ": ");
-        java.io.FileOutputStream fos = new java.io.FileOutputStream(assetFile+".echo");
-        InputStream in = store.get(id);
-        Utils.bufferedCopy(in, fos);
-        fos.close();
-        in.close();
-        now =  Instant.now().toEpochMilli();
-        System.out.println((now - start) + " msecs");
-        start = now;
-        // Case 4: remove asset
-        System.out.print("remove() file with ID: " + id + ": ");
-        store.remove(id);
-        now =  Instant.now().toEpochMilli();
-        System.out.println((now - start) + " msecs");
-        System.out.flush();
-        // should get nothing back now - will throw exception
-        store.get(id);
-*/
     }
 
     /**
