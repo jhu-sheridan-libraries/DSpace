@@ -66,7 +66,7 @@ import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
  *
  * @author Richard Rodgers, Peter Dietz
  * @author Vincenzo Mecca (vins01-4science - vincenzo.mecca at 4science.com)
- *
+ * @author Mark Patton
  */
 
 public class S3BitStoreService extends BaseBitStoreService {
@@ -82,19 +82,6 @@ public class S3BitStoreService extends BaseBitStoreService {
      * Checksum algorithm
      */
     static final String CSA = "MD5";
-
-    // These settings control the way an identifier is hashed into
-    // directory and file names
-    //
-    // With digitsPerLevel 2 and directoryLevels 3, an identifier
-    // like 12345678901234567890 turns into the relative name
-    // /12/34/56/12345678901234567890.
-    //
-    // You should not change these settings if you have data in the
-    // asset store, as the BitstreamStorageManager will be unable
-    // to find your existing data.
-    protected static final int digitsPerLevel = 2;
-    protected static final int directoryLevels = 3;
 
     private boolean enabled = false;
 
@@ -328,9 +315,9 @@ public class S3BitStoreService extends BaseBitStoreService {
         log.error(getAwsAccessKey());
         log.error(getAwsSecretKey());
         String key = getFullKey(bitstream.getInternalId());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
 
         try (DigestInputStream dis = new DigestInputStream(in, MessageDigest.getInstance(CSA))) {
-            ExecutorService executor = Executors.newSingleThreadExecutor();
             AsyncRequestBody body = AsyncRequestBody.fromInputStream(dis, null, executor);
 
             s3AsyncClient.putObject(b ->  b.bucket(bucketName).key(key).checksumAlgorithm(s3ChecksumAlgorithm),
@@ -353,6 +340,7 @@ public class S3BitStoreService extends BaseBitStoreService {
             // Should never happen
             log.warn("Caught NoSuchAlgorithmException", nsae);
         } finally {
+            executor.shutdown();
             in.close();
         }
     }
@@ -360,8 +348,7 @@ public class S3BitStoreService extends BaseBitStoreService {
     /**
      * Obtain technical metadata about an asset in the asset store.
      *
-     * Checksum used is (ETag) hex encoded 128-bit MD5 digest of an object's content as calculated by Amazon S3
-     * (Does not use getContentMD5, as that is 128-bit MD5 digest calculated on caller's side)
+     * The MD5 checksum is calculated locally because it is not supported by AWS.
      *
      * @param bitstream The asset to describe
      * @param attrs     A List of desired metadata fields
@@ -630,7 +617,6 @@ public class S3BitStoreService extends BaseBitStoreService {
         //Bucketname should be lowercase
         store.bucketName = DEFAULT_BUCKET_PREFIX + hostname + ".s3test";
         store.s3AsyncClient.createBucket(r -> r.bucket(store.bucketName)).join();
-
     }
 
     /**
