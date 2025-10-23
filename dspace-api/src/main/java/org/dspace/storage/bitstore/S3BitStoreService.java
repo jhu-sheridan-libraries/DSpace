@@ -132,8 +132,8 @@ public class S3BitStoreService extends BaseBitStoreService {
      */
     protected static Supplier<S3AsyncClient> amazonClientBuilderBy(
             @Nullable String endpoint,
-            @NotNull Region region,
-            @NotNull AwsCredentialsProvider credentialsProvider,
+            @Nullable Region region,
+            @Nullable AwsCredentialsProvider credentialsProvider,
             double targetThroughput,
             long minPartSize,
             Integer maxConcurrency
@@ -311,9 +311,6 @@ public class S3BitStoreService extends BaseBitStoreService {
      */
     @Override
     public void put(Bitstream bitstream, InputStream in) throws IOException {
-        log.error(getEndpoint());
-        log.error(getAwsAccessKey());
-        log.error(getAwsSecretKey());
         String key = getFullKey(bitstream.getInternalId());
         ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -504,6 +501,7 @@ public class S3BitStoreService extends BaseBitStoreService {
         return awsRegionName;
     }
 
+    @Autowired
     public void setAwsRegionName(String awsRegionName) {
         this.awsRegionName = awsRegionName;
     }
