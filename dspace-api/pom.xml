@@ -734,7 +734,7 @@
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>s3</artifactId>
-            <version>2.32.31</version>
+            <version>2.41.10</version>
             <exclusions>
               <exclusion>
                 <groupId>software.amazon.awssdk</groupId>
@@ -750,7 +750,7 @@
         <dependency>
             <groupId>software.amazon.awssdk.crt</groupId>
             <artifactId>aws-crt</artifactId>
-            <version>0.38.12</version>
+            <version>0.42.2</version>
         </dependency>
 
         <!-- TODO: This may need to be replaced with the "orcid-model" artifact once this ticket is resolved:
@@ -866,7 +866,7 @@
         <dependency>
           <groupId>com.adobe.testing</groupId>
           <artifactId>s3mock-testcontainers</artifactId>
-          <version>4.8.0</version>
+          <version>4.11.0</version>
           <scope>test</scope>
         </dependency>
 
