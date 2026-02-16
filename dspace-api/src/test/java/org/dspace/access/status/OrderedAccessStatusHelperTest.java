@@ -30,7 +30,7 @@ import org.dspace.services.factory.DSpaceServicesFactory;
 import org.junit.Before;
 import org.junit.Test;
 
-public class DefaultAccessStatusHelperTest extends AbstractAccessStatusHelperTest {
+public class OrderedAccessStatusHelperTest extends AbstractAccessStatusHelperTest {
 
     @Before
     @Override
@@ -40,7 +40,7 @@ public class DefaultAccessStatusHelperTest extends AbstractAccessStatusHelperTes
         PluginService pluginService = CoreServiceFactory.getInstance().getPluginService();
         configurationService.setProperty(
             "plugin.single.org.dspace.access.status.AccessStatusHelper",
-            "org.dspace.access.status.DefaultAccessStatusHelper"
+            "org.dspace.access.status.OrderedAccessStatusHelper"
         );
         helper = (AccessStatusHelper) pluginService.getSinglePlugin(AccessStatusHelper.class);
     }
@@ -125,10 +125,10 @@ public class DefaultAccessStatusHelperTest extends AbstractAccessStatusHelperTes
         AccessStatus accessStatus = helper.getAccessStatusFromItem(context,
                 itemWithoutPrimaryAndMultipleBitstreams, threshold, DefaultAccessStatusHelper.STATUS_FOR_CURRENT_USER);
         String status = accessStatus.getStatus();
-        assertThat("testWithNoPrimaryAndMultipleBitstreams 0", status,
-            equalTo(DefaultAccessStatusHelper.OPEN_ACCESS));
+        assertThat("testWithNoPrimaryAndMultipleBitstreams 1", status,
+                equalTo(DefaultAccessStatusHelper.EMBARGO));
         LocalDate availabilityDate = accessStatus.getAvailabilityDate();
-        assertNull("testWithNoPrimaryAndMultipleBitstreams 1", availabilityDate);
+        assertThat("testWithNoPrimaryAndMultipleBitstreams 2", availabilityDate, equalTo(startDate));
         // getAccessStatusFromBitstream -> first
         AccessStatus accessStatusFirstBitstream = helper.getAccessStatusFromBitstream(context,
                 firstBitstream, threshold, DefaultAccessStatusHelper.STATUS_FOR_CURRENT_USER);

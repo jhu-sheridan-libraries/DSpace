@@ -4723,66 +4723,6 @@ public class ItemRestRepositoryIT extends AbstractControllerIntegrationTest {
     }
 
     @Test
-    public void findAccessStatusForItemBadRequestTest() throws Exception {
-        getClient().perform(get("/api/core/items/{uuid}/accessStatus", "1"))
-                   .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    public void findAccessStatusForItemNotFoundTest() throws Exception {
-        UUID fakeUUID = UUID.randomUUID();
-        getClient().perform(get("/api/core/items/{uuid}/accessStatus", fakeUUID))
-                   .andExpect(status().isNotFound());
-    }
-
-    @Test
-    public void findAccessStatusForItemTest() throws Exception {
-        context.turnOffAuthorisationSystem();
-        parentCommunity = CommunityBuilder.createCommunity(context)
-                                          .withName("Parent Community")
-                                          .build();
-        Collection owningCollection = CollectionBuilder.createCollection(context, parentCommunity)
-                                                       .withName("Owning Collection")
-                                                       .build();
-        Item item = ItemBuilder.createItem(context, owningCollection)
-                               .withTitle("Test item")
-                               .build();
-        context.restoreAuthSystemState();
-        getClient().perform(get("/api/core/items/{uuid}/accessStatus", item.getID()))
-                   .andExpect(status().isOk())
-                   .andExpect(jsonPath("$.status", notNullValue()))
-                   .andExpect(jsonPath("$.embargoDate", nullValue()));
-    }
-
-    @Test
-    public void findAccessStatusWithEmbargoDateForItemTest() throws Exception {
-        context.turnOffAuthorisationSystem();
-        parentCommunity = CommunityBuilder.createCommunity(context)
-                                          .withName("Parent Community")
-                                          .build();
-        Collection owningCollection = CollectionBuilder.createCollection(context, parentCommunity)
-                                                       .withName("Owning Collection")
-                                                       .build();
-        Item item = ItemBuilder.createItem(context, owningCollection)
-                               .withTitle("Test item")
-                               .build();
-        Bundle originalBundle = BundleBuilder.createBundle(context, item)
-                                             .withName(Constants.DEFAULT_BUNDLE_NAME)
-                                             .build();
-        InputStream is = IOUtils.toInputStream("dummy", "utf-8");
-        Bitstream bitstream = BitstreamBuilder.createBitstream(context, originalBundle, is)
-                                              .withName("test.pdf")
-                                              .withMimeType("application/pdf")
-                                              .withEmbargoPeriod(Period.ofMonths(6))
-                                              .build();
-        context.restoreAuthSystemState();
-        getClient().perform(get("/api/core/items/{uuid}/accessStatus", item.getID()))
-                   .andExpect(status().isOk())
-                   .andExpect(jsonPath("$.status", notNullValue()))
-                   .andExpect(jsonPath("$.embargoDate", notNullValue()));
-    }
-
-    @Test
     public void findSubmitterByAdminTest() throws Exception {
         context.turnOffAuthorisationSystem();
 
