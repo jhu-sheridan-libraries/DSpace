@@ -53,6 +53,9 @@
     <!-- Additional indexing plugin that enables filtering items by access status -->
     <bean id="solrServiceIndexAccessStatusPlugin" class="org.dspace.discovery.SolrServiceIndexAccessStatusPlugin" scope="prototype"/>
 
+    <!-- Additional indexing plugin that filters items by access status and fulltext matching -->
+    <bean id="solrServiceAccessStatusFulltextFilterPlugin" class="org.dspace.discovery.SolrServiceAccessStatusFulltextFilterPlugin" scope="prototype"/>
+
     <!--Bean that is used for mapping communities/collections to certain discovery configurations.-->
     <bean id="org.dspace.discovery.configuration.DiscoveryConfigurationService" class="org.dspace.discovery.configuration.DiscoveryConfigurationService">
         <property name="map">
