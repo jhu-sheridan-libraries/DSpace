@@ -550,7 +550,7 @@ public class DiscoveryAccessStatusFulltextRestControllerIT extends AbstractContr
                 .withEmbargoPeriod(Period.ofMonths(12));
 
             if (groupMember != null) {
-                Group internalGroup= GroupBuilder.createGroup(context)
+                Group internalGroup = GroupBuilder.createGroup(context)
                     .withName("Internal Group")
                     .addMember(groupMember)
                     .build();
