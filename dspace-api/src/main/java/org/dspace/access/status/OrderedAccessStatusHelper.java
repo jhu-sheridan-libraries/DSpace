@@ -67,7 +67,14 @@ public class OrderedAccessStatusHelper extends DefaultAccessStatusHelper {
             .flatMap(List::stream)
             .map(bitstream -> getAccessStatusForBitstreamSafe(context, bitstream, threshold, type))
             .min(Comparator.comparingInt(
-                accessStatus -> ORDERED_BITSTREAM_STATUSES.indexOf(accessStatus.getStatus())
+                accessStatus -> {
+                    int index = ORDERED_BITSTREAM_STATUSES.indexOf(accessStatus.getStatus());
+                    if (index == -1) {
+                        throw new RuntimeException("Access status " + accessStatus.getStatus() +
+                            " not found in ordered list");
+                    }
+                    return index;
+                }
             ))
             .orElseGet(() -> new AccessStatus(UNKNOWN, null));
     }
