@@ -31,6 +31,8 @@ import java.util.TreeMap;
 
 import org.apache.logging.log4j.Logger;
 import org.dspace.authorize.AuthorizeException;
+import org.dspace.authorize.factory.AuthorizeServiceFactory;
+import org.dspace.authorize.service.AuthorizeService;
 import org.dspace.content.Bitstream;
 import org.dspace.content.BitstreamFormat;
 import org.dspace.content.Bundle;
@@ -71,6 +73,9 @@ public class DSpaceSwordAPI {
 
     protected ConfigurationService configurationService
             = DSpaceServicesFactory.getInstance().getConfigurationService();
+
+    private final AuthorizeService authorizeService =
+        AuthorizeServiceFactory.getInstance().getAuthorizeService();
 
     public SwordContext noAuthContext()
         throws DSpaceSwordException {
@@ -343,6 +348,9 @@ public class DSpaceSwordAPI {
                         "Original deposit stored as " + fn +
                             ", in item bundle " + swordBundle);
                 }
+
+                //TODO Interim fix for https://github.com/DSpace/dspace/issues/11871
+                authorizeService.replaceBundlePoliciesWithAdminOnly(context, swordBundle);
 
                 bundleService.update(context, swordBundle);
                 itemService.update(context, item);

@@ -7,6 +7,8 @@
  */
 package org.dspace.app.mediafilter;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
@@ -19,6 +21,9 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.Strings;
 import org.dspace.AbstractIntegrationTestWithDatabase;
 import org.dspace.authorize.AuthorizeException;
+import org.dspace.authorize.ResourcePolicy;
+import org.dspace.authorize.factory.AuthorizeServiceFactory;
+import org.dspace.authorize.service.AuthorizeService;
 import org.dspace.builder.BitstreamBuilder;
 import org.dspace.builder.CollectionBuilder;
 import org.dspace.builder.CommunityBuilder;
@@ -32,6 +37,7 @@ import org.dspace.content.Item;
 import org.dspace.content.factory.ContentServiceFactory;
 import org.dspace.content.service.BitstreamService;
 import org.dspace.content.service.ItemService;
+import org.dspace.core.Constants;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -44,6 +50,7 @@ public class MediaFilterIT extends AbstractIntegrationTestWithDatabase {
 
     private ItemService itemService = ContentServiceFactory.getInstance().getItemService();
     private BitstreamService bitstreamService = ContentServiceFactory.getInstance().getBitstreamService();
+    private AuthorizeService authorizeService = AuthorizeServiceFactory.getInstance().getAuthorizeService();
     protected Community topComm1;
     protected Community topComm2;
     protected Community childComm1_1;
@@ -203,11 +210,35 @@ public class MediaFilterIT extends AbstractIntegrationTestWithDatabase {
                 Strings.CS.equals(bitstreams.get(0).getName(), expectedFileName));
         assertTrue("The text bitstream in the " + item.getName() + " doesn't contain the proper content ["
                 + expectedContent + "]", Strings.CS.contains(getContent(bitstreams.get(0)), expectedContent));
+
+        // Verify the TEXT bundle and bitstream have only admin-only resource policies.
+        assertEquals(1, textBundles.size());
+        Bundle textBundle = textBundles.get(0);
+
+        List<ResourcePolicy> bundlePolicies = authorizeService.getPolicies(context, textBundle);
+        verifyAdminOnlyPolicies(bundlePolicies);
+
+        assertEquals(1, textBundle.getBitstreams().size());
+        Bitstream bitstream = textBundle.getBitstreams().get(0);
+        List<ResourcePolicy> bitstreamPolicies = authorizeService.getPolicies(context, bitstream);
+        verifyAdminOnlyPolicies(bitstreamPolicies);
+    }
+
+    private void verifyAdminOnlyPolicies(List<ResourcePolicy> resourcePolicies) throws Exception {
+        assertEquals(1, resourcePolicies.size());
+        ResourcePolicy resourcePolicy = resourcePolicies.get(0);
+        assertEquals(context.getAdminGroup(), resourcePolicy.getGroup());
+        assertEquals(Constants.READ, resourcePolicy.getAction());
+        assertEquals(ResourcePolicy.TYPE_CUSTOM, resourcePolicy.getRpType());
+        assertNull(resourcePolicy.getEPerson());
     }
 
     private CharSequence getContent(Bitstream bitstream) throws IOException, SQLException, AuthorizeException {
+        context.turnOffAuthorisationSystem();
         try (InputStream input = bitstreamService.retrieve(context, bitstream)) {
             return IOUtils.toString(input, "UTF-8");
+        } finally {
+            context.restoreAuthSystemState();
         }
     }
 

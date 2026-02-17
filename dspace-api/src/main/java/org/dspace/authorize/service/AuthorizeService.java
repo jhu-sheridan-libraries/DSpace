@@ -13,6 +13,7 @@ import java.util.List;
 
 import org.dspace.authorize.AuthorizeException;
 import org.dspace.authorize.ResourcePolicy;
+import org.dspace.content.Bundle;
 import org.dspace.content.Collection;
 import org.dspace.content.Community;
 import org.dspace.content.DSpaceObject;
@@ -675,5 +676,17 @@ public interface AuthorizeService {
 
     public void addCustomPoliciesNotInPlace(Context context, DSpaceObject dso,
             List<ResourcePolicy> defaultCollectionPolicies) throws SQLException, AuthorizeException;
+
+    /**
+     * Replace all the policies for the bundle with admin-only policies. The policies of the bitstreams in the bundle
+     * will also be replaced with admin-only policies.
+     *
+     * @param context DSpace Context
+     * @param bundle  bundle to update policies to admin-only
+     * @throws SQLException       if there's a database problem
+     * @throws AuthorizeException if the current user is not authorized to replace these policies
+     */
+    void replaceBundlePoliciesWithAdminOnly(Context context, Bundle bundle)
+        throws SQLException, AuthorizeException;
 
 }

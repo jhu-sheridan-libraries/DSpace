@@ -1052,6 +1052,26 @@ public class AuthorizeServiceImpl implements AuthorizeService {
         }
     }
 
+    @Override
+    public void replaceBundlePoliciesWithAdminOnly(Context context, Bundle bundle)
+        throws SQLException, AuthorizeException {
+        replaceAllDsoPoliciesWithAdminOnly(context, bundle);
+        bundle.getBitstreams().forEach(bitstream -> {
+            try {
+                replaceAllDsoPoliciesWithAdminOnly(context, bitstream);
+            } catch (SQLException | AuthorizeException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    private void replaceAllDsoPoliciesWithAdminOnly(Context context, DSpaceObject dso)
+        throws SQLException, AuthorizeException {
+        Group adminGroup = groupService.findByName(context, Group.ADMIN);
+        removeAllPolicies(context, dso);
+        addPolicy(context, dso, Constants.READ, adminGroup, ResourcePolicy.TYPE_CUSTOM);
+    }
+
     /**
      * Check whether or not there is already an RP on the given dso, which has actionId={@link Constants.READ} and
      * resourceTypeId={@link ResourcePolicy.TYPE_CUSTOM}

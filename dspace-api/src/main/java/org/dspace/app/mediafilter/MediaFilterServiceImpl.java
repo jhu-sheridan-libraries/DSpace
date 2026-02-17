@@ -405,6 +405,12 @@ public class MediaFilterServiceImpl implements MediaFilterService, InitializingB
             //Set permissions on the derivative bitstream
             updatePoliciesOfDerivativeBitstream(context, b, formatFilter, source);
 
+            //TEXT bundles and bitstreams are admin-only
+            //TODO Interim fix for https://github.com/DSpace/dspace/issues/11871
+            if ("TEXT".equals(targetBundle.getName())) {
+                authorizeService.replaceBundlePoliciesWithAdminOnly(context, targetBundle);
+            }
+
             //do post-processing of the generated bitstream
             formatFilter.postProcessBitstream(context, item, b);
 
