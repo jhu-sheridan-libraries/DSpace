@@ -34,6 +34,7 @@ import org.dspace.content.Item;
 import org.dspace.core.Constants;
 import org.dspace.eperson.Group;
 import org.dspace.services.ConfigurationService;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,7 +59,19 @@ public class ItemOrderedAccessStatusRestRepositoryIT extends AbstractControllerI
         // already been created by the time the test method runs.
         ReflectionTestUtils.setField(accessStatusService, "helper", null);
         ((AccessStatusServiceImpl) accessStatusService).init();
+    }
 
+    @After
+    public void reset() throws Exception {
+        configurationService.setProperty(
+            "plugin.single.org.dspace.access.status.AccessStatusHelper",
+            "org.dspace.access.status.DefaultAccessStatusHelper"
+        );
+        // This is needed because the AccessStatusHelper is a plugin that is created and set in the
+        // AccessStatusServiceImpl.init method. AccessStatusService is a spring managed bean, and the context has
+        // already been created by the time the test method runs.
+        ReflectionTestUtils.setField(accessStatusService, "helper", null);
+        ((AccessStatusServiceImpl) accessStatusService).init();
     }
 
     @Test
