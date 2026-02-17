@@ -148,7 +148,10 @@
     <bean class="org.dspace.discovery.indexobject.ClaimedTaskIndexFactoryImpl" autowire-candidate="true"/>
     <bean class="org.dspace.discovery.indexobject.CollectionIndexFactoryImpl" autowire-candidate="true"/>
     <bean class="org.dspace.discovery.indexobject.CommunityIndexFactoryImpl" autowire-candidate="true"/>
-    <bean class="org.dspace.discovery.indexobject.ItemIndexFactoryImpl" autowire-candidate="true"/>
+
+    <!-- JHU ItemIndexFactoryImpl needed for customizing solr indexing of fulltext -->
+    <bean class="edu.jhu.library.dspace.discovery.indexobject.JhuItemIndexFactoryImpl" autowire-candidate="true"/>
+
     <bean class="org.dspace.discovery.indexobject.PoolTaskIndexFactoryImpl" autowire-candidate="true"/>
     <bean class="org.dspace.discovery.indexobject.WorkflowItemIndexFactoryImpl" autowire-candidate="true"/>
     <bean class="org.dspace.discovery.indexobject.WorkspaceItemIndexFactoryImpl" autowire-candidate="true"/>
