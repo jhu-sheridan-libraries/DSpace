@@ -15,6 +15,8 @@ import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
 import org.dspace.authorize.AuthorizeException;
+import org.dspace.authorize.factory.AuthorizeServiceFactory;
+import org.dspace.authorize.service.AuthorizeService;
 import org.dspace.content.Bitstream;
 import org.dspace.content.BitstreamFormat;
 import org.dspace.content.Bundle;
@@ -47,6 +49,9 @@ public class ItemDepositor extends Depositor {
 
     private final ConfigurationService configurationService
             = DSpaceServicesFactory.getInstance().getConfigurationService();
+
+    private final AuthorizeService authorizeService =
+        AuthorizeServiceFactory.getInstance().getAuthorizeService();
 
     private Item item;
 
@@ -155,6 +160,9 @@ public class ItemDepositor extends Depositor {
                 if (bf != null) {
                     bitstreamService.setFormat(context, bitstream, bf);
                 }
+
+                //TODO Interim fix for https://github.com/DSpace/dspace/issues/11871
+                authorizeService.replaceBundlePoliciesWithAdminOnly(context, swordBundle);
 
                 bitstreamService.update(context, bitstream);
                 bundleService.update(context, swordBundle);

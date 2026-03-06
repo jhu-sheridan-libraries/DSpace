@@ -12,15 +12,25 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 
 import java.nio.file.Path;
+import java.util.Iterator;
 import java.util.List;
 
+import org.apache.commons.lang3.stream.Streams;
 import org.dspace.app.rest.test.AbstractWebClientIntegrationTest;
+import org.dspace.authorize.ResourcePolicy;
+import org.dspace.authorize.service.AuthorizeService;
 import org.dspace.builder.CollectionBuilder;
 import org.dspace.builder.CommunityBuilder;
+import org.dspace.content.Bitstream;
+import org.dspace.content.Bundle;
 import org.dspace.content.Collection;
+import org.dspace.content.Item;
+import org.dspace.content.service.ItemService;
+import org.dspace.core.Constants;
 import org.dspace.services.ConfigurationService;
 import org.hamcrest.MatcherAssert;
 import org.junit.Assume;
@@ -53,6 +63,12 @@ public class Swordv1IT extends AbstractWebClientIntegrationTest {
 
     @Autowired
     private ConfigurationService configurationService;
+
+    @Autowired
+    private ItemService itemService;
+
+    @Autowired
+    private AuthorizeService authorizeService;
 
     // All SWORD paths that we test against
     private final String SERVICE_DOC_PATH = "/sword/servicedocument";
@@ -180,6 +196,27 @@ public class Swordv1IT extends AbstractWebClientIntegrationTest {
         // Body should include a link to the zip bitstream in the newly created Item
         // This just verifies "example.zip" exists in the body.
         MatcherAssert.assertThat(response.getBody(), containsString("example.zip"));
+
+        // Verify the sword bundle and bitstream have only admin-only resource policies.
+        Iterator<Item> itemsIterator = itemService.findByCollection(context, collection);
+
+        Item foundItem = Streams.of(itemsIterator)
+            .filter(item -> item.getName().contains("Attempts to detect retrotransposition"))
+            .findFirst()
+            .get();
+        List<Bundle> swordBundles = foundItem.getBundles().stream()
+            .filter(bundle -> bundle.getName().equals("SWORD"))
+            .toList();
+        assertEquals(1, swordBundles.size());
+        Bundle swordBundle = swordBundles.get(0);
+
+        List<ResourcePolicy> bundlePolicies = authorizeService.getPolicies(context, swordBundle);
+        verifyAdminOnlyPolicies(bundlePolicies);
+
+        assertEquals(1, swordBundle.getBitstreams().size());
+        Bitstream bitstream = swordBundle.getBitstreams().get(0);
+        List<ResourcePolicy> bitstreamPolicies = authorizeService.getPolicies(context, bitstream);
+        verifyAdminOnlyPolicies(bitstreamPolicies);
     }
 
     @Test
@@ -190,6 +227,15 @@ public class Swordv1IT extends AbstractWebClientIntegrationTest {
         assertThat(response.getStatusCode(), equalTo(HttpStatus.UNAUTHORIZED));
 
         //NOTE: An authorized /media-link test is performed in depositTest() above.
+    }
+
+    private void verifyAdminOnlyPolicies(List<ResourcePolicy> resourcePolicies) throws Exception {
+        assertEquals(1, resourcePolicies.size());
+        ResourcePolicy resourcePolicy = resourcePolicies.get(0);
+        assertEquals(context.getAdminGroup(), resourcePolicy.getGroup());
+        assertEquals(Constants.READ, resourcePolicy.getAction());
+        assertEquals(ResourcePolicy.TYPE_CUSTOM, resourcePolicy.getRpType());
+        assertNull(resourcePolicy.getEPerson());
     }
 }
 
