@@ -12,19 +12,28 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 
 import java.nio.file.Path;
+import java.util.Iterator;
 import java.util.List;
 
+import org.apache.commons.lang3.stream.Streams;
 import org.dspace.app.rest.test.AbstractWebClientIntegrationTest;
+import org.dspace.authorize.ResourcePolicy;
+import org.dspace.authorize.service.AuthorizeService;
 import org.dspace.builder.CollectionBuilder;
 import org.dspace.builder.CommunityBuilder;
 import org.dspace.builder.ItemBuilder;
 import org.dspace.builder.WorkflowItemBuilder;
 import org.dspace.builder.WorkspaceItemBuilder;
+import org.dspace.content.Bitstream;
+import org.dspace.content.Bundle;
 import org.dspace.content.Collection;
 import org.dspace.content.Item;
 import org.dspace.content.WorkspaceItem;
+import org.dspace.content.service.ItemService;
+import org.dspace.core.Constants;
 import org.dspace.services.ConfigurationService;
 import org.dspace.xmlworkflow.storedcomponents.XmlWorkflowItem;
 import org.junit.Assume;
@@ -60,6 +69,12 @@ public class Swordv2IT extends AbstractWebClientIntegrationTest {
 
     @Autowired
     private ConfigurationService configurationService;
+
+    @Autowired
+    private ItemService itemService;
+
+    @Autowired
+    private AuthorizeService authorizeService;
 
     // All SWORD v2 paths that we test against
     private final String SWORD_PATH = "/swordv2";
@@ -243,6 +258,8 @@ public class Swordv2IT extends AbstractWebClientIntegrationTest {
         // Body should include that link as the rel="edit" URL
         assertThat(response.getBody(), containsString("<link href=\"" + editLink + "\" rel=\"edit\""));
 
+        verifyBundleAndBitstreamAdminOnly(collection);
+
         //----
         // STEP 2: Verify uploaded content can be read via SWORDv2
         //----
@@ -264,6 +281,8 @@ public class Swordv2IT extends AbstractWebClientIntegrationTest {
         // Verify Item title also is returned in the body
         assertThat(response.getBody(), containsString("Attempts to detect retrotransposition"));
 
+        verifyBundleAndBitstreamAdminOnly(collection);
+
         //----
         // STEP 3: Verify uploaded content can be UPDATED via SWORDv2 (by an Admin ONLY)
         //----
@@ -283,6 +302,8 @@ public class Swordv2IT extends AbstractWebClientIntegrationTest {
         // Expect a 200 OK response
         assertEquals(HttpStatus.OK, response.getStatusCode());
 
+        verifyBundleAndBitstreamAdminOnly(collection);
+
         //----
         // STEP 4: Verify content was successfully updated by reading content again
         //----
@@ -297,6 +318,8 @@ public class Swordv2IT extends AbstractWebClientIntegrationTest {
         assertEquals(HttpStatus.OK, response.getStatusCode());
         // Verify the new Item title is now included in the response body
         assertThat(response.getBody(), containsString(newTitle));
+
+        verifyBundleAndBitstreamAdminOnly(collection);
 
         //----
         // STEP 5: Verify archived Item can be DELETED via SWORDv2 (by an Admin ONLY)
@@ -526,6 +549,38 @@ public class Swordv2IT extends AbstractWebClientIntegrationTest {
         // Also verify Item is in "archived" state
         assertThat(response.getBody(),
                    containsString("<category term=\"http://dspace.org/state/archived\""));
+    }
+
+    private void verifyBundleAndBitstreamAdminOnly(Collection collection) throws Exception {
+        // Verify the sword bundle and bitstream have only admin-only resource policies.
+        Iterator<Item> itemsIterator = itemService.findByCollection(context, collection);
+
+        Item foundItem = Streams.of(itemsIterator)
+            .filter(item -> item.getName().contains("Attempts to detect retrotransposition"))
+            .findFirst()
+            .get();
+        List<Bundle> swordBundles = foundItem.getBundles().stream()
+            .filter(bundle -> bundle.getName().equals("SWORD"))
+            .toList();
+        assertEquals(1, swordBundles.size());
+        Bundle swordBundle = swordBundles.get(0);
+
+        List<ResourcePolicy> bundlePolicies = authorizeService.getPolicies(context, swordBundle);
+        verifyAdminOnlyPolicies(bundlePolicies);
+
+        assertEquals(1, swordBundle.getBitstreams().size());
+        Bitstream bitstream = swordBundle.getBitstreams().get(0);
+        List<ResourcePolicy> bitstreamPolicies = authorizeService.getPolicies(context, bitstream);
+        verifyAdminOnlyPolicies(bitstreamPolicies);
+    }
+
+    private void verifyAdminOnlyPolicies(List<ResourcePolicy> resourcePolicies) throws Exception {
+        assertEquals(1, resourcePolicies.size());
+        ResourcePolicy resourcePolicy = resourcePolicies.get(0);
+        assertEquals(context.getAdminGroup(), resourcePolicy.getGroup());
+        assertEquals(Constants.READ, resourcePolicy.getAction());
+        assertEquals(ResourcePolicy.TYPE_CUSTOM, resourcePolicy.getRpType());
+        assertNull(resourcePolicy.getEPerson());
     }
 }
 
