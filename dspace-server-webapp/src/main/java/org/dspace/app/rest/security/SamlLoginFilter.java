@@ -8,13 +8,12 @@
 package org.dspace.app.rest.security;
 
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.stream.Stream;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.dspace.authenticate.SamlAuthentication;
@@ -34,7 +33,8 @@ import org.springframework.security.core.AuthenticationException;
  * <ol>
  *   <li>When SAML authentication is enabled, the client/UI receives the URL to the active SAML
  *       relying party's authentication endpoint in the WWW-Authenticate header.
- *       See {@link org.dspace.authenticate.SamlAuthentication#loginPageURL(org.dspace.core.Context, HttpServletRequest, HttpServletResponse)}.</li>
+ *       See {@link org.dspace.authenticate.SamlAuthentication#loginPageURL(
+ *       org.dspace.core.Context, HttpServletRequest, HttpServletResponse)}.</li>
  *   <li>The client sends the user to that URL when they select SAML authentication.</li>
  *   <li>The active SAML relying party sends the client to the login page at the asserting party
  *       (aka identity provider, or IdP).</li>
@@ -45,10 +45,13 @@ import org.springframework.security.core.AuthenticationException;
  *       maps them into request attributes, and forwards the request to the path where this filter
  *       is listening.</li>
  *   <li>This filter intercepts the request in order to check for a valid SAML login (see
- *       {@link org.dspace.authenticate.SamlAuthentication#authenticate(org.dspace.core.Context, String, String, String, HttpServletRequest)})
+ *       {@link org.dspace.authenticate.SamlAuthentication#authenticate(
+ *       org.dspace.core.Context, String, String, String, HttpServletRequest)})
  *       and stores that user info in a JWT. It also saves that JWT in a <em>temporary</em>
  *       authentication cookie.</li>
- *   <li>This filter redirects the user back to the UI (after verifying it's at a trusted URL).</li>
+ *   <li>This filter redirects the user back to the original URL if a "redirectUrl" request
+ *       parameter is present (after verifying it's at a trusted host), or to the configured UI
+ *       URL otherwise.</li>
  *   <li>The client reads the JWT from the cookie, and sends it back in a request to
  *       /api/authn/login, which triggers the server-side to destroy the cookie and move the JWT
  *       into a header.</li>
@@ -57,7 +60,10 @@ import org.springframework.security.core.AuthenticationException;
  * @author Ray Lee
  */
 public class SamlLoginFilter extends StatelessLoginFilter {
-    private static final Logger logger = LogManager.getLogger(SamlLoginFilter.class);
+
+    private static final Logger log = LogManager.getLogger(SamlLoginFilter.class);
+
+    public static final String REDIRECT_URL_PARAM = "redirectUrl";
 
     private ConfigurationService configurationService = DSpaceServicesFactory.getInstance().getConfigurationService();
 
@@ -84,36 +90,64 @@ public class SamlLoginFilter extends StatelessLoginFilter {
 
         restAuthenticationService.addAuthenticationDataForUser(request, response, (DSpaceAuthentication) auth, true);
 
-        redirectAfterSuccess(request, response);
+        String targetUrl = determineTargetUrl(request);
+
+        if (isRedirectUrlAllowed(targetUrl)) {
+            response.sendRedirect(targetUrl);
+        } else {
+            log.error("Invalid SAML redirectURL={}. URL doesn't match hostname of server or UI!", targetUrl);
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "SAML redirect URL not allowed");
+        }
     }
 
     /**
-     * After successful login, redirect to the configured UI URL. If that URL is not allowed for
-     * this DSpace site, return a 400 error.
+     * Determine the redirect target URL. Uses the "redirectUrl" request parameter if present,
+     * otherwise falls back to the configured UI URL ({@code dspace.ui.url}).
      *
-     * @param request
-     * @param response
-     * @throws IOException
+     * @param request the current request
+     * @return the target URL to redirect to
      */
-    private void redirectAfterSuccess(HttpServletRequest request, HttpServletResponse response) throws IOException {
-        String redirectUrl = configurationService.getProperty("dspace.ui.url");
-        String redirectHostName = Utils.getHostName(redirectUrl);
-        String serverUrl = configurationService.getProperty("dspace.server.url");
+    private String determineTargetUrl(HttpServletRequest request) {
+        String redirectUrl = request.getParameter(REDIRECT_URL_PARAM);
 
-        boolean isRedirectAllowed = Stream.concat(
-                Stream.of(serverUrl),
-                Arrays.stream(configurationService.getArrayProperty("rest.cors.allowed-origins")))
-            .map(url -> Utils.getHostName(url))
-            .anyMatch(hostName -> hostName.equalsIgnoreCase(redirectHostName));
-
-        if (isRedirectAllowed) {
-            logger.debug("SAML redirecting to " + redirectUrl);
-
-            response.sendRedirect(redirectUrl);
-        } else {
-            logger.error("SAML redirect URL {} is not allowed" + redirectUrl);
-
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST,"SAML redirect URL not allowed");
+        if (StringUtils.isNotEmpty(redirectUrl)) {
+            return redirectUrl;
         }
+
+        String uiUrl = configurationService.getProperty("dspace.ui.url");
+        if (StringUtils.isNotEmpty(uiUrl)) {
+            return uiUrl;
+        }
+
+        return "/";
+    }
+
+    /**
+     * Check if the given redirect URL is allowed for this DSpace site. The URL's hostname must
+     * match the server hostname or one of the configured CORS allowed origins.
+     *
+     * @param redirectUrl the URL to validate
+     * @return true if the URL is allowed, false otherwise
+     */
+    private boolean isRedirectUrlAllowed(String redirectUrl) {
+        String redirectHostName = Utils.getHostName(redirectUrl);
+        if (redirectHostName == null) {
+            return false;
+        }
+        redirectHostName = redirectHostName.toLowerCase();
+
+        String serverHostName = Utils.getHostName(configurationService.getProperty("dspace.server.url"));
+        if (serverHostName != null && redirectHostName.equals(serverHostName.toLowerCase())) {
+            return true;
+        }
+
+        for (String url : configurationService.getArrayProperty("rest.cors.allowed-origins")) {
+            String allowedHostName = Utils.getHostName(url);
+            if (allowedHostName != null && redirectHostName.equals(allowedHostName.toLowerCase())) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
