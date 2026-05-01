@@ -198,7 +198,7 @@ public class MediaFilterIT extends AbstractIntegrationTestWithDatabase {
         assertTrue("The item " + item.getName() + " should NOT have the TEXT bundle", textBundles.size() == 0);
     }
 
-    private void checkItemHasBeenProcessed(Item item) throws IOException, SQLException, AuthorizeException {
+    private void checkItemHasBeenProcessed(Item item) throws IOException, SQLException, AuthorizeException, Exception {
         String expectedFileName = Strings.CS.endsWith(item.getName(), "_a") ? "test.csv.txt" : "test.txt.txt";
         String expectedContent = Strings.CS.endsWith(item.getName(), "_a") ? "data3,3" : "quick brown fox";
         List<Bundle> textBundles = item.getBundles("TEXT");
