@@ -115,6 +115,58 @@ public class SamlLoginFilterTest extends AbstractDSpaceTest {
     }
 
     @Test
+    public void testRedirectToOriginalUrl() throws Exception {
+        configurationService.setProperty("plugin.sequence.org.dspace.authenticate.AuthenticationMethod",
+            "org.dspace.authenticate.SamlAuthentication");
+
+        configurationService.setProperty("dspace.ui.url","http://dspace.example.org");
+        configurationService.setProperty("dspace.server.url","http://dspace.example.org/server");
+
+        request = createRequest("/api/authn/saml");
+        ((MockHttpServletRequest) request).setParameter("redirectUrl",
+            "http://dspace.example.org/items/123");
+
+        filter.doFilter(request, response, filterChain);
+
+        verify(response).sendRedirect("http://dspace.example.org/items/123");
+    }
+
+    @Test
+    public void testRedirectToOriginalUrlNotAllowed() throws Exception {
+        configurationService.setProperty("plugin.sequence.org.dspace.authenticate.AuthenticationMethod",
+            "org.dspace.authenticate.SamlAuthentication");
+
+        configurationService.setProperty("dspace.ui.url","http://dspace.example.org");
+        configurationService.setProperty("dspace.server.url","http://dspace.example.org/server");
+
+        request = createRequest("/api/authn/saml");
+        ((MockHttpServletRequest) request).setParameter("redirectUrl",
+            "http://evil.example.com/phishing");
+
+        filter.doFilter(request, response, filterChain);
+
+        verify(response).sendError(eq(400), anyString());
+    }
+
+    @Test
+    public void testRedirectToOriginalUrlCorsAllowed() throws Exception {
+        configurationService.setProperty("plugin.sequence.org.dspace.authenticate.AuthenticationMethod",
+            "org.dspace.authenticate.SamlAuthentication");
+
+        configurationService.setProperty("rest.cors.allowed-origins", "http://other.allowed.org");
+        configurationService.setProperty("dspace.ui.url","http://dspace.example.org");
+        configurationService.setProperty("dspace.server.url","http://dspace.example.org/server");
+
+        request = createRequest("/api/authn/saml");
+        ((MockHttpServletRequest) request).setParameter("redirectUrl",
+            "http://other.allowed.org/collections/456");
+
+        filter.doFilter(request, response, filterChain);
+
+        verify(response).sendRedirect("http://other.allowed.org/collections/456");
+    }
+
+    @Test
     public void testSamlAuthenticationNotEnabled() throws Exception {
         assertThrows(ProviderNotFoundException.class, () -> filter.attemptAuthentication(request, response));
     }
